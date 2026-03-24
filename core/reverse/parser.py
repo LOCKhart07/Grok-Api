@@ -82,13 +82,22 @@ class Parser:
             if index.get("action_script") in scripts:
                 return index["actions"], index["xsid_script"]
             
+        script_content1 = None
+        script_content2 = None
+        action_script = None
         for script in scripts:
-            content: str = requests.get(f'https://grok.com{script}', impersonate="chrome136").text
+            url = script if script.startswith('http') else f'https://grok.com{script}'
+            content: str = requests.get(url, impersonate="chrome136").text
             if "anonPrivateKey" in content:
-                script_content1: str = content
-                action_script: str = script
+                script_content1 = content
+                action_script = script
             elif "880932)" in content:
-                script_content2: str = content
+                script_content2 = content
+
+        if script_content1 is None:
+            raise RuntimeError("Could not find Grok action script (no 'anonPrivateKey' in any script)")
+        if script_content2 is None:
+            raise RuntimeError("Could not find Grok xsid script (no '880932)' in any script)")
 
         actions: list = findall(r'createServerReference\)\("([a-f0-9]+)"', script_content1)
         xsid_script: str = search(r'"(static/chunks/[^"]+\.js)"[^}]*?\(880932\)', script_content2).group(1)
@@ -105,6 +114,4 @@ class Parser:
                 
             return actions, xsid_script
         else:
-            print("Something went wrong while parsing script and actions")
-        
-        
+            raise RuntimeError("Failed to parse actions or xsid_script from Grok scripts")

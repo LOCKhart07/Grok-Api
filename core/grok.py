@@ -44,7 +44,7 @@ class Grok:
             load_site: requests.models.Response = self.session.get('https://grok.com/c')
             self.session.cookies.update(load_site.cookies)
             
-            scripts: list = [s['src'] for s in BeautifulSoup(load_site.text, 'html.parser').find_all('script', src=True) if s['src'].startswith('/_next/static/chunks/')]
+            scripts: list = [s['src'] for s in BeautifulSoup(load_site.text, 'html.parser').find_all('script', src=True) if '/_next/static/chunks/' in s['src']]
 
             self.actions, self.xsid_script = Parser.parse_grok(scripts)
             
@@ -95,13 +95,17 @@ class Grok:
 
             match self.c_run:
                 case 1:
-                    start_idx = c_request.content.hex().find("3a6f38362c")
+                    challenge_bytes = None
+                    hex_content = c_request.content.hex()
+                    start_idx = hex_content.find("3a6f38362c")
                     if start_idx != -1:
                         start_idx += len("3a6f38362c")
-                        end_idx = c_request.content.hex().find("313a", start_idx)
+                        end_idx = hex_content.find("313a", start_idx)
                         if end_idx != -1:
-                            challenge_hex = c_request.content.hex()[start_idx:end_idx]
-                            challenge_bytes = bytes.fromhex(challenge_hex)
+                            challenge_bytes = bytes.fromhex(hex_content[start_idx:end_idx])
+
+                    if challenge_bytes is None:
+                        raise RuntimeError("Failed to extract challenge bytes from handshake response")
 
                     self.challenge_dict: dict = Anon.sign_challenge(challenge_bytes, self.keys["privateKey"])
                     Log.Success(f"Solved Challenge: {self.challenge_dict}")
@@ -112,7 +116,7 @@ class Grok:
             self.c_run += 1
         
     
-    def start_convo(self, message: str, extra_data: dict = None) -> dict:
+    def start_convo(self, message: str, extra_data: dict = None, _retries: int = 3) -> dict:
         
         if not extra_data:
             self._load()
@@ -214,11 +218,14 @@ class Grok:
                 }
             else:
                 if 'rejected by anti-bot rules' in convo_request.text:
-                    return Grok(self.session.proxies.get("all")).start_convo(message=message, extra_data=extra_data)
+                    if _retries <= 0:
+                        Log.Error("Anti-bot rejection: max retries exceeded")
+                        return {"error": convo_request.text}
+                    return Grok(self.model, self.session.proxies.get("all")).start_convo(message=message, extra_data=extra_data, _retries=_retries - 1)
                 elif "Grok is under heavy usage right now" in convo_request.text:
                     Log.Error("Grok is under heavy usage right now, try again later.")
                     return convo_request.json()
-                    
+
                 Log.Error("Something went wrong")
                 Log.Error(convo_request.text)
                 return {"error": convo_request.text}
@@ -302,7 +309,10 @@ class Grok:
                 }
             else:
                 if 'rejected by anti-bot rules' in convo_request.text:
-                    return Grok(self.session.proxies.get("all")).start_convo(message=message, extra_data=extra_data)
+                    if _retries <= 0:
+                        Log.Error("Anti-bot rejection: max retries exceeded")
+                        return {"error": convo_request.text}
+                    return Grok(self.model, self.session.proxies.get("all")).start_convo(message=message, extra_data=extra_data, _retries=_retries - 1)
                 Log.Error("Something went wrong")
                 Log.Error(convo_request.text)
                 return {"error": convo_request.text}
