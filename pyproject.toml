@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grok-api"
+version = "1.0.0"
+description = "Reverse-engineered Python wrapper for Grok AI — no API key required"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "curl_cffi",
+    "coincurve",
+    "beautifulsoup4",
+    "colorama",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+]
+
+[tool.setuptools.packages.find]
+include = ["core*"]
+
+[tool.setuptools.package-data]
+core = ["mappings/*.json"]
